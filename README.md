@@ -1,95 +1,51 @@
-# discogs-mcp
+# Building a Remote MCP Server on Cloudflare (Without Auth)
 
-A Model Context Protocol (MCP) server that exposes the [Discogs API](https://www.discogs.com/developers) so Claude (or any MCP client) can research music — searching the database, pulling release/artist/label metadata, inspecting your collection and wantlist, and checking marketplace stats — without hitting web-scraping blocks.
+This example allows you to deploy a remote MCP server that doesn't require authentication on Cloudflare Workers.
 
-## Quick start — one variable
+## Get started:
 
-Set `DISCOGS_TOKEN` and you're done. Everything else has a working default.
+[![Deploy to Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/ai/tree/main/demos/remote-mcp-authless)
 
-1. Generate a personal access token at <https://www.discogs.com/settings/developers>.
-2. Pick an install target below.
+This will deploy your MCP server to a URL like: `remote-mcp-server-authless.<your-account>.workers.dev/mcp`
 
-### Claude Code
+Alternatively, you can use the command line below to get the remote MCP Server created on your local machine:
 
 ```bash
-claude mcp add discogs --env DISCOGS_TOKEN=your_token_here -- uvx discogs-mcp
+npm create cloudflare@latest -- my-mcp-server --template=cloudflare/ai/demos/remote-mcp-authless
 ```
 
-### Claude Desktop
+## Customizing your MCP Server
 
-Edit `claude_desktop_config.json` and add:
+To add your own [tools](https://developers.cloudflare.com/agents/model-context-protocol/tools/) to the MCP server, define each tool inside the `init()` method of `src/index.ts` using `this.server.tool(...)`.
+
+## Connect to Cloudflare AI Playground
+
+You can connect to your MCP server from the Cloudflare AI Playground, which is a remote MCP client:
+
+1. Go to https://playground.ai.cloudflare.com/
+2. Enter your deployed MCP server URL (`remote-mcp-server-authless.<your-account>.workers.dev/mcp`)
+3. You can now use your MCP tools directly from the playground!
+
+## Connect Claude Desktop to your MCP server
+
+You can also connect to your remote MCP server from local MCP clients, by using the [mcp-remote proxy](https://www.npmjs.com/package/mcp-remote).
+
+To connect to your MCP server from Claude Desktop, follow [Anthropic's Quickstart](https://modelcontextprotocol.io/quickstart/user) and within Claude Desktop go to Settings > Developer > Edit Config.
+
+Update with this configuration:
 
 ```json
 {
-  "mcpServers": {
-    "discogs": {
-      "command": "uvx",
-      "args": ["discogs-mcp"],
-      "env": { "DISCOGS_TOKEN": "your_token_here" }
-    }
-  }
+	"mcpServers": {
+		"calculator": {
+			"command": "npx",
+			"args": [
+				"mcp-remote",
+				"http://localhost:8787/mcp" // or remote-mcp-server-authless.your-account.workers.dev/mcp
+			]
+		}
+	}
 }
 ```
 
-### Claude Agent SDK (Python)
-
-```python
-from mcp import StdioServerParameters
-from mcp.client.stdio import stdio_client
-
-params = StdioServerParameters(
-    command="uvx",
-    args=["discogs-mcp"],
-    env={"DISCOGS_TOKEN": "your_token_here"},
-)
-# pass `params` to your MCP client
-```
-
-## Configuration
-
-| Env var                   | Required | Default / behavior                                                                    |
-| ------------------------- | -------- | ------------------------------------------------------------------------------------- |
-| `DISCOGS_TOKEN`           | Yes\*    | Personal access token. Unlocks lookup at 60 req/min plus personal + marketplace data. |
-| `DISCOGS_USER_AGENT`      | No       | Auto: `discogs-mcp/<version> +https://github.com/mcal8055/discogs_mcp`.               |
-| `DISCOGS_DEFAULT_USERNAME`| No       | Auto-resolved from `/oauth/identity` on first use; cached per process.                |
-
-\* Technically optional for anonymous database lookup (25 req/min), but the token boosts the limit and is required for personal data and marketplace tools.
-
-## Tools
-
-### Core lookup
-
-- `search(q, type, artist, title, label, genre, style, country, year, format, catno, barcode, track, per_page, page)`
-- `get_release(release_id)`
-- `get_master(master_id)`
-- `get_master_versions(master_id, per_page, page)`
-- `get_artist(artist_id)`
-- `get_artist_releases(artist_id, per_page, page, sort, sort_order)`
-- `get_label(label_id)`
-- `get_label_releases(label_id, per_page, page)`
-
-### Personal data (requires token)
-
-- `get_identity()`
-- `get_collection_folders(username?)`
-- `get_collection(username?, folder_id=0, per_page, page)` — `folder_id=0` is the All folder.
-- `get_wantlist(username?, per_page, page)`
-
-### Marketplace
-
-- `get_marketplace_listing(listing_id)`
-- `get_price_suggestions(release_id)` — token required.
-- `get_release_stats(release_id)`
-
-## Development
-
-```bash
-uv sync --extra dev
-uv run pytest
-uv run discogs-mcp                              # stdio server, Ctrl+C to stop
-npx @modelcontextprotocol/inspector uv run discogs-mcp
-```
-
-## License
-
-MIT — see [LICENSE](LICENSE).
+Restart Claude and you should see the tools become available.
