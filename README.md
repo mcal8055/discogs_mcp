@@ -62,6 +62,8 @@ All tools are read-only (`readOnlyHint: true`).
 - **Read-only upstream.** No write tools ship in this release — the server cannot modify your collection, wantlist, or marketplace listings.
 - **Rate limits.** Authenticated Discogs requests are capped at 60/min per token (Discogs-side); the server surfaces HTTP 429s with a clear message when hit.
 
+See [PRIVACY.md](PRIVACY.md) for the full privacy policy, including GDPR legal basis, retention / deletion, and your rights.
+
 ## Self-host
 
 If you'd rather run your own Worker instead of using the hosted instance above:
