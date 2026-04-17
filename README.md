@@ -1,51 +1,90 @@
-# Building a Remote MCP Server on Cloudflare (Without Auth)
+# discogs-mcp
 
-This example allows you to deploy a remote MCP server that doesn't require authentication on Cloudflare Workers.
+Remote Model Context Protocol (MCP) server that lets Claude search the [Discogs](https://www.discogs.com/developers) music database and read the authenticated user's collection, wantlist, and marketplace data.
 
-## Get started:
+Runs on Cloudflare Workers. Claude connects over streamable HTTP. Per-user auth is handled end-to-end: Claude does OAuth 2.0 with the Worker (CIMD / DCR); the Worker does OAuth 1.0a with Discogs. No tokens are shared between users.
 
-[![Deploy to Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/ai/tree/main/demos/remote-mcp-authless)
+## Connect from Claude
 
-This will deploy your MCP server to a URL like: `remote-mcp-server-authless.<your-account>.workers.dev/mcp`
+In Claude: **Settings → Connectors → Add custom connector**
 
-Alternatively, you can use the command line below to get the remote MCP Server created on your local machine:
+```
+https://discogs-mcp.discogsmcp.workers.dev/mcp
+```
+
+Claude will walk you through the authorize flow — log in with your Discogs account, grant access, and the connection is ready. You can disconnect any time from the same screen; disconnecting revokes the Worker-side token and deletes stored Discogs credentials.
+
+## Tools (16)
+
+All tools are read-only (`readOnlyHint: true`).
+
+### Core lookup
+
+| Tool | Purpose |
+|---|---|
+| `search` | Search the Discogs database by query or filters (type, artist, title, year, catno, barcode, etc.) |
+| `get_release` | Full metadata for a specific pressing |
+| `get_master` | Canonical master release |
+| `get_master_versions` | List all pressings of a master |
+| `get_artist` | Artist profile, aliases, members |
+| `get_artist_releases` | Releases credited to an artist |
+| `get_label` | Label profile, parent/sublabels |
+| `get_label_releases` | Releases published by a label |
+
+### Personal data (authenticated user)
+
+| Tool | Purpose |
+|---|---|
+| `get_identity` | Your Discogs username and id |
+| `get_collection_folders` | List collection folders |
+| `get_collection` | List releases in a folder (folder 0 = All) |
+| `get_wantlist` | List your wantlist |
+
+### Marketplace
+
+| Tool | Purpose |
+|---|---|
+| `get_marketplace_listing` | Fetch a listing by id |
+| `get_price_suggestions` | Discogs price suggestions by condition |
+| `get_release_stats` | Number for sale + lowest asking price |
+
+### Health
+
+| Tool | Purpose |
+|---|---|
+| `ping` | Confirm the connection and report the authenticated username |
+
+## Privacy and data handling
+
+- **Per-user auth.** Each connected user completes OAuth 1.0a with Discogs individually. One user's tokens are never visible to another.
+- **Tokens at rest.** Your Discogs access token lives in Cloudflare KV attached to your OAuth grant, readable only by the Worker runtime. Deleting the connector in Claude revokes the grant and drops the KV entry.
+- **No conversation storage.** The server doesn't read, keep, or transmit any content from your Claude conversation beyond the tool inputs you send.
+- **Read-only upstream.** No write tools ship in this release — the server cannot modify your collection, wantlist, or marketplace listings.
+- **Rate limits.** Authenticated Discogs requests are capped at 60/min per token (Discogs-side); the server surfaces HTTP 429s with a clear message when hit.
+
+## Self-host
+
+If you'd rather run your own Worker instead of using the hosted instance above:
+
+1. Clone this repo
+2. Register a Discogs application at <https://www.discogs.com/settings/developers> — note the Consumer Key and Consumer Secret, and set the Callback URL to `https://<your-worker-url>/callback/discogs`
+3. Create a Cloudflare KV namespace: `npx wrangler kv namespace create OAUTH_KV` and paste the id into `wrangler.jsonc`
+4. Set secrets:
+   ```
+   npx wrangler secret put DISCOGS_CONSUMER_KEY
+   npx wrangler secret put DISCOGS_CONSUMER_SECRET
+   ```
+5. Deploy: `npx wrangler deploy`
+
+## Development
 
 ```bash
-npm create cloudflare@latest -- my-mcp-server --template=cloudflare/ai/demos/remote-mcp-authless
+npm install
+npm run dev         # local wrangler dev at http://localhost:8787/mcp
+npm run type-check  # tsc --noEmit
+npm test            # vitest — validates the OAuth 1.0a signer against a reference implementation
 ```
 
-## Customizing your MCP Server
+## License
 
-To add your own [tools](https://developers.cloudflare.com/agents/model-context-protocol/tools/) to the MCP server, define each tool inside the `init()` method of `src/index.ts` using `this.server.tool(...)`.
-
-## Connect to Cloudflare AI Playground
-
-You can connect to your MCP server from the Cloudflare AI Playground, which is a remote MCP client:
-
-1. Go to https://playground.ai.cloudflare.com/
-2. Enter your deployed MCP server URL (`remote-mcp-server-authless.<your-account>.workers.dev/mcp`)
-3. You can now use your MCP tools directly from the playground!
-
-## Connect Claude Desktop to your MCP server
-
-You can also connect to your remote MCP server from local MCP clients, by using the [mcp-remote proxy](https://www.npmjs.com/package/mcp-remote).
-
-To connect to your MCP server from Claude Desktop, follow [Anthropic's Quickstart](https://modelcontextprotocol.io/quickstart/user) and within Claude Desktop go to Settings > Developer > Edit Config.
-
-Update with this configuration:
-
-```json
-{
-	"mcpServers": {
-		"calculator": {
-			"command": "npx",
-			"args": [
-				"mcp-remote",
-				"http://localhost:8787/mcp" // or remote-mcp-server-authless.your-account.workers.dev/mcp
-			]
-		}
-	}
-}
-```
-
-Restart Claude and you should see the tools become available.
+MIT — see [LICENSE](LICENSE).

@@ -25,6 +25,21 @@ function asText(obj: unknown) {
 	return { content: [{ type: "text" as const, text: JSON.stringify(obj, null, 2) }] };
 }
 
+function interpretDiscogsError(status: number, body: string, path: string): string {
+	let message: string | undefined;
+	try {
+		const parsed = JSON.parse(body) as { message?: string };
+		message = parsed.message;
+	} catch {
+		// non-JSON body
+	}
+	if (status === 401) return `Discogs rejected the request (401). The OAuth token may have been revoked — try reconnecting.${message ? ` Details: ${message}` : ""}`;
+	if (status === 403) return `Discogs denied access to ${path} (403). This resource may require seller privileges or different scope.${message ? ` Details: ${message}` : ""}`;
+	if (status === 404) return `Discogs returned 404 for ${path}. The ID may be wrong or the resource was removed.${message ? ` Details: ${message}` : ""}`;
+	if (status === 429) return `Rate-limited by Discogs (429). Wait a moment and retry — authenticated requests are capped at 60/min.`;
+	return `Discogs returned ${status} for ${path}.${message ? ` Details: ${message}` : ""}`;
+}
+
 export class DiscogsMCP extends McpAgent<DiscogsEnv, unknown, DiscogsProps> {
 	server = new McpServer(
 		{ name: "discogs-mcp", version: "0.1.0" },
@@ -66,7 +81,7 @@ export class DiscogsMCP extends McpAgent<DiscogsEnv, unknown, DiscogsProps> {
 		}
 		const res = await signedFetch(url, { method }, this.consumer, this.access);
 		if (!res.ok) {
-			throw new Error(`Discogs ${method} ${path} failed: ${res.status} ${await res.text()}`);
+			throw new Error(interpretDiscogsError(res.status, await res.text(), path));
 		}
 		return res.json();
 	}
@@ -77,6 +92,7 @@ export class DiscogsMCP extends McpAgent<DiscogsEnv, unknown, DiscogsProps> {
 		this.server.registerTool(
 			"ping",
 			{
+				title: "Ping Discogs MCP",
 				description:
 					"Health check. Returns the authenticated Discogs username so you can verify the connection is live.",
 				inputSchema: {},
@@ -92,8 +108,9 @@ export class DiscogsMCP extends McpAgent<DiscogsEnv, unknown, DiscogsProps> {
 		this.server.registerTool(
 			"search",
 			{
+				title: "Search Discogs",
 				description:
-					"Search the Discogs database. Supply at least one of `q` or a specific filter. Returns a paginated list of release/master/artist/label results with IDs usable by the get_* tools.",
+					"Search the Discogs database (https://www.discogs.com/developers#page:database,header:database-search). Supply at least one of `q` or a specific filter. Returns a paginated list of release/master/artist/label results with IDs usable by the get_* tools.",
 				inputSchema: {
 					q: z.string().optional().describe("Free-text query matching any field"),
 					type: z
@@ -121,6 +138,7 @@ export class DiscogsMCP extends McpAgent<DiscogsEnv, unknown, DiscogsProps> {
 		this.server.registerTool(
 			"get_release",
 			{
+				title: "Get Release",
 				description:
 					"Fetch full metadata for a specific release (pressing). Use a release ID from `search` results, not a master ID.",
 				inputSchema: {
@@ -134,6 +152,7 @@ export class DiscogsMCP extends McpAgent<DiscogsEnv, unknown, DiscogsProps> {
 		this.server.registerTool(
 			"get_master",
 			{
+				title: "Get Master Release",
 				description:
 					"Fetch a master release (the canonical entry grouping all pressings). Use `get_master_versions` to list its pressings.",
 				inputSchema: {
@@ -147,6 +166,7 @@ export class DiscogsMCP extends McpAgent<DiscogsEnv, unknown, DiscogsProps> {
 		this.server.registerTool(
 			"get_master_versions",
 			{
+				title: "List Master Versions",
 				description:
 					"List all pressings (versions) of a master release. Each entry includes a release_id usable with `get_release`.",
 				inputSchema: {
@@ -162,6 +182,7 @@ export class DiscogsMCP extends McpAgent<DiscogsEnv, unknown, DiscogsProps> {
 		this.server.registerTool(
 			"get_artist",
 			{
+				title: "Get Artist",
 				description: "Fetch an artist's profile, aliases, members, and URLs.",
 				inputSchema: { artist_id: z.number().int().positive() },
 				annotations: readOnly,
@@ -172,6 +193,7 @@ export class DiscogsMCP extends McpAgent<DiscogsEnv, unknown, DiscogsProps> {
 		this.server.registerTool(
 			"get_artist_releases",
 			{
+				title: "List Artist Releases",
 				description: "List releases credited to an artist, sorted by year/title/format.",
 				inputSchema: {
 					artist_id: z.number().int().positive(),
@@ -188,6 +210,7 @@ export class DiscogsMCP extends McpAgent<DiscogsEnv, unknown, DiscogsProps> {
 		this.server.registerTool(
 			"get_label",
 			{
+				title: "Get Label",
 				description: "Fetch a label's profile, parent label, and sublabels.",
 				inputSchema: { label_id: z.number().int().positive() },
 				annotations: readOnly,
@@ -198,6 +221,7 @@ export class DiscogsMCP extends McpAgent<DiscogsEnv, unknown, DiscogsProps> {
 		this.server.registerTool(
 			"get_label_releases",
 			{
+				title: "List Label Releases",
 				description: "List releases published by a label.",
 				inputSchema: {
 					label_id: z.number().int().positive(),
@@ -214,6 +238,7 @@ export class DiscogsMCP extends McpAgent<DiscogsEnv, unknown, DiscogsProps> {
 		this.server.registerTool(
 			"get_identity",
 			{
+				title: "Get My Identity",
 				description: "Return the authenticated user's Discogs identity (username, id, resource URL).",
 				inputSchema: {},
 				annotations: readOnly,
@@ -224,6 +249,7 @@ export class DiscogsMCP extends McpAgent<DiscogsEnv, unknown, DiscogsProps> {
 		this.server.registerTool(
 			"get_collection_folders",
 			{
+				title: "List Collection Folders",
 				description:
 					"List collection folders for a user. Defaults to the authenticated user. Folder 0 (`All`) is the union of everything.",
 				inputSchema: {
@@ -243,6 +269,7 @@ export class DiscogsMCP extends McpAgent<DiscogsEnv, unknown, DiscogsProps> {
 		this.server.registerTool(
 			"get_collection",
 			{
+				title: "Get Collection",
 				description:
 					"List releases in a user's collection folder. `folder_id=0` is the `All` folder. Defaults to the authenticated user.",
 				inputSchema: {
@@ -267,6 +294,7 @@ export class DiscogsMCP extends McpAgent<DiscogsEnv, unknown, DiscogsProps> {
 		this.server.registerTool(
 			"get_wantlist",
 			{
+				title: "Get Wantlist",
 				description: "List a user's wantlist. Defaults to the authenticated user.",
 				inputSchema: {
 					username: z.string().optional(),
@@ -285,6 +313,7 @@ export class DiscogsMCP extends McpAgent<DiscogsEnv, unknown, DiscogsProps> {
 		this.server.registerTool(
 			"get_marketplace_listing",
 			{
+				title: "Get Marketplace Listing",
 				description: "Fetch a single marketplace listing by ID.",
 				inputSchema: { listing_id: z.number().int().positive() },
 				annotations: readOnly,
@@ -296,6 +325,7 @@ export class DiscogsMCP extends McpAgent<DiscogsEnv, unknown, DiscogsProps> {
 		this.server.registerTool(
 			"get_price_suggestions",
 			{
+				title: "Get Price Suggestions",
 				description:
 					"Get Discogs's suggested marketplace prices by condition for a release. Requires an authenticated seller account.",
 				inputSchema: { release_id: z.number().int().positive() },
@@ -308,6 +338,7 @@ export class DiscogsMCP extends McpAgent<DiscogsEnv, unknown, DiscogsProps> {
 		this.server.registerTool(
 			"get_release_stats",
 			{
+				title: "Get Release Marketplace Stats",
 				description:
 					"Get marketplace stats for a release: number for sale and lowest asking price.",
 				inputSchema: { release_id: z.number().int().positive() },
