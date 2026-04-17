@@ -19,7 +19,17 @@ function pngBytes(): Uint8Array {
 	return bytes;
 }
 
+function escapeHtml(s: string): string {
+	return s
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;")
+		.replace(/'/g, "&#39;");
+}
+
 function rootHtml(origin: string): string {
+	const safeOrigin = escapeHtml(origin);
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -37,7 +47,7 @@ function rootHtml(origin: string): string {
 <img src="/favicon.svg" alt="discogs-mcp logo" width="96" height="96">
 <h1>discogs-mcp</h1>
 <p>Open-source Model Context Protocol server for <a href="https://www.discogs.com">Discogs</a>. Search the music database, read your collection, wantlist, and marketplace data from Claude.</p>
-<p><strong>Connect in Claude:</strong> Settings → Connectors → Add custom connector, URL <code>${origin}/mcp</code></p>
+<p><strong>Connect in Claude:</strong> Settings → Connectors → Add custom connector, URL <code>${safeOrigin}/mcp</code></p>
 <p>Source, self-host instructions, and privacy policy: <a href="https://github.com/mcal8055/discogs_mcp">github.com/mcal8055/discogs_mcp</a></p>
 </body>
 </html>`;

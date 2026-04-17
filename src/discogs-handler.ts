@@ -82,6 +82,11 @@ app.get("/callback/discogs", async (c) => {
 		secret: c.env.DISCOGS_CONSUMER_SECRET,
 	};
 
+	// Delete the KV stash before the token exchange so concurrent callbacks
+	// (browser back/refresh) can't both call getAccessToken with the same
+	// request token. The second arrival sees an empty KV and 400s cleanly.
+	await c.env.OAUTH_KV.delete(kvKey(requestToken));
+
 	let accessToken: string;
 	let accessSecret: string;
 	try {
@@ -103,8 +108,6 @@ app.get("/callback/discogs", async (c) => {
 		console.error("discogs identity failed:", err);
 		return c.text("Upstream authorization error", 502);
 	}
-
-	await c.env.OAUTH_KV.delete(kvKey(requestToken));
 
 	const { redirectTo } = await c.env.OAUTH_PROVIDER.completeAuthorization({
 		request: oauthReqInfo,
