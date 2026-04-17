@@ -120,6 +120,39 @@ describe("discogs-handler /callback/discogs", () => {
 		expect(await res.text()).toContain("expired");
 	});
 
+	it("returns 400 when KV stash is corrupt (missing fields)", async () => {
+		const env = makeEnv();
+		const kv = env.OAUTH_KV as { put: (k: string, v: string) => Promise<void> };
+		await kv.put("discogs_req:req_tok", JSON.stringify({ wrong: "shape" }));
+		const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+		const res = await app.request(
+			"/callback/discogs?oauth_token=req_tok&oauth_verifier=v",
+			{},
+			env,
+		);
+
+		expect(res.status).toBe(400);
+		expect(errSpy).toHaveBeenCalled();
+		errSpy.mockRestore();
+	});
+
+	it("returns 400 when KV stash is not valid JSON", async () => {
+		const env = makeEnv();
+		const kv = env.OAUTH_KV as { put: (k: string, v: string) => Promise<void> };
+		await kv.put("discogs_req:req_tok", "not json at all");
+		const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+		const res = await app.request(
+			"/callback/discogs?oauth_token=req_tok&oauth_verifier=v",
+			{},
+			env,
+		);
+
+		expect(res.status).toBe(400);
+		errSpy.mockRestore();
+	});
+
 	it("returns a generic 502 when access_token exchange fails", async () => {
 		const env = makeEnv();
 		const kv = env.OAUTH_KV as { put: (k: string, v: string) => Promise<void> };

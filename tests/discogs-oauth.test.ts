@@ -1,7 +1,7 @@
 import OAuth from "oauth-1.0a";
 import CryptoJS from "crypto-js";
-import { describe, expect, it } from "vitest";
-import { buildAuthHeader } from "../src/discogs-oauth";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { buildAuthHeader, getIdentity } from "../src/discogs-oauth";
 
 /**
  * Verify our Web-Crypto HMAC-SHA1 signer produces the same signature as
@@ -123,5 +123,51 @@ describe("OAuth 1.0a signer — matches oauth-1.0a reference", () => {
 		});
 
 		expect(ourSig).toBe(expectedSig);
+	});
+});
+
+describe("getIdentity — validates Discogs response shape", () => {
+	const consumer = { key: "k", secret: "s" };
+	const access = { token: "t", secret: "ts" };
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	function mockFetchResponse(body: unknown, ok = true, status = 200) {
+		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+			new Response(typeof body === "string" ? body : JSON.stringify(body), {
+				status: ok ? status : status || 500,
+				headers: { "Content-Type": "application/json" },
+			}),
+		);
+	}
+
+	it("returns username and id on a valid response", async () => {
+		mockFetchResponse({ username: "alice", id: 42 });
+		const result = await getIdentity(consumer, access);
+		expect(result).toEqual({ username: "alice", id: 42 });
+	});
+
+	it("throws when username is missing", async () => {
+		mockFetchResponse({ id: 42 });
+		await expect(getIdentity(consumer, access)).rejects.toThrow();
+	});
+
+	it("throws when id is a string instead of a number", async () => {
+		mockFetchResponse({ username: "alice", id: "42" });
+		await expect(getIdentity(consumer, access)).rejects.toThrow();
+	});
+
+	it("throws when username is empty", async () => {
+		mockFetchResponse({ username: "", id: 42 });
+		await expect(getIdentity(consumer, access)).rejects.toThrow();
+	});
+
+	it("throws with upstream error message on non-2xx", async () => {
+		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+			new Response("Unauthorized", { status: 401 }),
+		);
+		await expect(getIdentity(consumer, access)).rejects.toThrow(/401/);
 	});
 });

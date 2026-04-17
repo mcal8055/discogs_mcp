@@ -1,11 +1,17 @@
 import type { AuthRequest, OAuthHelpers } from "@cloudflare/workers-oauth-provider";
 import { Hono } from "hono";
+import { z } from "zod";
 import {
 	AUTHORIZE_URL,
 	getAccessToken,
 	getIdentity,
 	getRequestToken,
 } from "./discogs-oauth";
+
+const stashedSchema = z.object({
+	requestTokenSecret: z.string().min(1),
+	oauthReqInfo: z.unknown(),
+});
 
 type Bindings = Env & {
 	OAUTH_PROVIDER: OAuthHelpers;
@@ -60,10 +66,16 @@ app.get("/callback/discogs", async (c) => {
 
 	const stashed = await c.env.OAUTH_KV.get(kvKey(requestToken));
 	if (!stashed) return c.text("Authorization request expired or unknown", 400);
-	const { requestTokenSecret, oauthReqInfo } = JSON.parse(stashed) as {
-		requestTokenSecret: string;
-		oauthReqInfo: AuthRequest;
-	};
+	let requestTokenSecret: string;
+	let oauthReqInfo: AuthRequest;
+	try {
+		const parsed = stashedSchema.parse(JSON.parse(stashed));
+		requestTokenSecret = parsed.requestTokenSecret;
+		oauthReqInfo = parsed.oauthReqInfo as AuthRequest;
+	} catch (err) {
+		console.error("corrupt KV stash for", requestToken, err);
+		return c.text("Authorization request expired or unknown", 400);
+	}
 
 	const consumer = {
 		key: c.env.DISCOGS_CONSUMER_KEY,

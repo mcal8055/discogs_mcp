@@ -4,8 +4,14 @@
  * Spec: https://datatracker.ietf.org/doc/html/rfc5849
  * Discogs: https://www.discogs.com/developers/#page:authentication
  */
+import { z } from "zod";
 
 export const USER_AGENT = "discogs-mcp/0.1.0 +https://github.com/mcal8055/discogs_mcp";
+
+const identitySchema = z.object({
+	username: z.string().min(1),
+	id: z.number().int(),
+});
 
 const API_BASE = "https://api.discogs.com";
 const REQUEST_TOKEN_URL = `${API_BASE}/oauth/request_token`;
@@ -150,7 +156,7 @@ export async function getIdentity(
 ): Promise<{ username: string; id: number }> {
 	const res = await signedFetch(IDENTITY_URL, { method: "GET" }, consumer, access);
 	if (!res.ok) throw new Error(`identity failed: ${res.status} ${await res.text()}`);
-	const body = (await res.json()) as { username: string; id: number };
+	const body = identitySchema.parse(await res.json());
 	return { username: body.username, id: body.id };
 }
 
