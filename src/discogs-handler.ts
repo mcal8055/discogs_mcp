@@ -39,7 +39,8 @@ app.get("/authorize", async (c) => {
 	try {
 		({ requestToken, requestTokenSecret } = await getRequestToken(consumer, callbackUrl));
 	} catch (err) {
-		return c.text(`Discogs request_token failed: ${(err as Error).message}`, 502);
+		console.error("discogs request_token failed:", err);
+		return c.text("Upstream authorization error", 502);
 	}
 
 	await c.env.OAUTH_KV.put(
@@ -78,7 +79,8 @@ app.get("/callback/discogs", async (c) => {
 			verifier,
 		));
 	} catch (err) {
-		return c.text(`Discogs access_token failed: ${(err as Error).message}`, 502);
+		console.error("discogs access_token failed:", err);
+		return c.text("Upstream authorization error", 502);
 	}
 
 	let username: string;
@@ -86,7 +88,8 @@ app.get("/callback/discogs", async (c) => {
 	try {
 		({ username, id } = await getIdentity(consumer, { token: accessToken, secret: accessSecret }));
 	} catch (err) {
-		return c.text(`Discogs identity failed: ${(err as Error).message}`, 502);
+		console.error("discogs identity failed:", err);
+		return c.text("Upstream authorization error", 502);
 	}
 
 	await c.env.OAUTH_KV.delete(kvKey(requestToken));
