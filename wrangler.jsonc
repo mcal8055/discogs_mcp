@@ -7,10 +7,15 @@
 	"name": "discogs-mcp",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-03-10",
-	"compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+	"compatibility_flags": [
+		"nodejs_compat",
+		"global_fetch_strictly_public"
+	],
 	"migrations": [
 		{
-			"new_sqlite_classes": ["DiscogsMCP"],
+			"new_sqlite_classes": [
+				"DiscogsMCP"
+			],
 			"tag": "v1"
 		}
 	],
@@ -25,7 +30,8 @@
 	"kv_namespaces": [
 		{
 			"binding": "OAUTH_KV",
-			"id": "REPLACE_AFTER_WRANGLER_KV_CREATE"
+			"id": "be4f14c0adaa4b9cbdb4a2118cb7035d",
+			"remote": true
 		}
 	],
 	"observability": {
