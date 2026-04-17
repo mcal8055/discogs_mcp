@@ -13,6 +13,8 @@ const identitySchema = z.object({
 	id: z.number().int(),
 });
 
+const FETCH_TIMEOUT_MS = 15_000;
+
 const API_BASE = "https://api.discogs.com";
 const REQUEST_TOKEN_URL = `${API_BASE}/oauth/request_token`;
 const ACCESS_TOKEN_URL = `${API_BASE}/oauth/access_token`;
@@ -119,6 +121,7 @@ export async function getRequestToken(
 	const res = await fetch(REQUEST_TOKEN_URL, {
 		method: "POST",
 		headers: { Authorization: authHeader, "User-Agent": USER_AGENT },
+		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 	});
 	if (!res.ok) throw new Error(`request_token failed: ${res.status} ${await res.text()}`);
 	const body = parseFormEncoded(await res.text());
@@ -142,6 +145,7 @@ export async function getAccessToken(
 	const res = await fetch(ACCESS_TOKEN_URL, {
 		method: "POST",
 		headers: { Authorization: authHeader, "User-Agent": USER_AGENT },
+		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 	});
 	if (!res.ok) throw new Error(`access_token failed: ${res.status} ${await res.text()}`);
 	const body = parseFormEncoded(await res.text());
@@ -172,5 +176,9 @@ export async function signedFetch(
 	const headers = new Headers(init.headers);
 	headers.set("Authorization", authHeader);
 	headers.set("User-Agent", USER_AGENT);
-	return fetch(url, { ...init, headers });
+	return fetch(url, {
+		...init,
+		headers,
+		signal: init.signal ?? AbortSignal.timeout(FETCH_TIMEOUT_MS),
+	});
 }
