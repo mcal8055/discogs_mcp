@@ -19,27 +19,29 @@ function pngBytes(): Uint8Array {
 	return bytes;
 }
 
-const ROOT_HTML = `<!DOCTYPE html>
+function rootHtml(origin: string): string {
+	return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>discogs-mcp</title>
-<meta name="description" content="Remote MCP server for Discogs — search the music database and access your collection, wantlist, and marketplace data from Claude.">
+<meta name="description" content="Open-source MCP server for Discogs — search the music database and access your collection, wantlist, and marketplace data from Claude.">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="shortcut icon" href="/favicon.ico">
 <link rel="apple-touch-icon" href="/favicon.png">
-<style>body{font-family:system-ui,-apple-system,sans-serif;max-width:40rem;margin:3rem auto;padding:0 1.25rem;color:#222;line-height:1.55}img{display:block;margin:0 auto 1rem;width:96px;height:96px}h1{text-align:center;margin-top:0}a{color:#c96442}code{background:#f2f2f2;padding:.15em .35em;border-radius:3px}</style>
+<style>body{font-family:system-ui,-apple-system,sans-serif;max-width:40rem;margin:3rem auto;padding:0 1.25rem;color:#222;line-height:1.55}img{display:block;margin:0 auto 1rem;width:96px;height:96px}h1{text-align:center;margin-top:0}a{color:#c96442}code{background:#f2f2f2;padding:.15em .35em;border-radius:3px;word-break:break-all}</style>
 </head>
 <body>
 <img src="/favicon.svg" alt="discogs-mcp logo" width="96" height="96">
 <h1>discogs-mcp</h1>
-<p>Remote Model Context Protocol server for <a href="https://www.discogs.com">Discogs</a>. Search the music database, read your collection, wantlist, and marketplace data from Claude.</p>
-<p><strong>Connect in Claude:</strong> Settings → Connectors → Add custom connector, URL <code>https://discogs-mcp.discogsmcp.workers.dev/mcp</code></p>
-<p>Source and privacy policy: <a href="https://github.com/mcal8055/discogs_mcp">github.com/mcal8055/discogs_mcp</a></p>
+<p>Open-source Model Context Protocol server for <a href="https://www.discogs.com">Discogs</a>. Search the music database, read your collection, wantlist, and marketplace data from Claude.</p>
+<p><strong>Connect in Claude:</strong> Settings → Connectors → Add custom connector, URL <code>${origin}/mcp</code></p>
+<p>Source, self-host instructions, and privacy policy: <a href="https://github.com/mcal8055/discogs_mcp">github.com/mcal8055/discogs_mcp</a></p>
 </body>
 </html>`;
+}
 
 const oauth = new OAuthProvider({
 	apiHandler: DiscogsMCP.serve("/mcp") as never,
@@ -71,7 +73,7 @@ export default {
 			});
 		}
 		if (url.pathname === "/" || url.pathname === "") {
-			return new Response(ROOT_HTML, {
+			return new Response(rootHtml(url.origin), {
 				headers: {
 					"Content-Type": "text/html; charset=utf-8",
 					"Cache-Control": "public, max-age=3600",

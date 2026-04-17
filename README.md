@@ -1,18 +1,43 @@
 # discogs-mcp
 
-Remote Model Context Protocol (MCP) server that lets Claude search the [Discogs](https://www.discogs.com/developers) music database and read the authenticated user's collection, wantlist, and marketplace data.
+Open-source Model Context Protocol (MCP) server that lets Claude search the [Discogs](https://www.discogs.com/developers) music database and read the authenticated user's collection, wantlist, and marketplace data.
 
 Runs on Cloudflare Workers. Claude connects over streamable HTTP. Per-user auth is handled end-to-end: Claude does OAuth 2.0 with the Worker (CIMD / DCR); the Worker does OAuth 1.0a with Discogs. No tokens are shared between users.
 
-## Connect from Claude
+**This repo is self-host only — there is no public hosted instance.** Clone and deploy your own.
 
-In Claude: **Settings → Connectors → Add custom connector**
+## Deploy your own (≈10 min)
 
-```
-https://discogs-mcp.discogsmcp.workers.dev/mcp
-```
+Prerequisites: a free [Cloudflare account](https://dash.cloudflare.com/sign-up), a free [Discogs account](https://www.discogs.com/users/create), and Node 20+.
 
-Claude will walk you through the authorize flow — log in with your Discogs account, grant access, and the connection is ready. You can disconnect any time from the same screen; disconnecting revokes the Worker-side token and deletes stored Discogs credentials.
+1. **Clone and install**
+   ```bash
+   git clone https://github.com/mcal8055/discogs_mcp.git
+   cd discogs_mcp
+   npm install
+   ```
+
+2. **Register a Discogs application** at <https://www.discogs.com/settings/developers>. Save the Consumer Key and Consumer Secret. Set the Callback URL to `https://<your-worker-subdomain>.workers.dev/callback/discogs` — you'll know the exact hostname after step 5; initially put a placeholder and update after first deploy.
+
+3. **Create a Cloudflare KV namespace** for OAuth state:
+   ```bash
+   npx wrangler kv namespace create OAUTH_KV
+   ```
+   Paste the returned `id` into `wrangler.jsonc` under `kv_namespaces`, replacing the existing id.
+
+4. **Set your Discogs consumer credentials** as Worker secrets (encrypted at rest by Cloudflare):
+   ```bash
+   npx wrangler secret put DISCOGS_CONSUMER_KEY
+   npx wrangler secret put DISCOGS_CONSUMER_SECRET
+   ```
+
+5. **Deploy**:
+   ```bash
+   npx wrangler deploy
+   ```
+   Wrangler prints your live URL (e.g. `https://discogs-mcp.<account>.workers.dev`). Go back to Discogs and update the Callback URL to `<that URL>/callback/discogs`.
+
+6. **Connect in Claude**: Settings → Connectors → Add custom connector → paste `<your Worker URL>/mcp`. Claude will walk you through the Discogs login / authorize flow.
 
 ## Tools (16)
 
@@ -45,7 +70,7 @@ All tools are read-only (`readOnlyHint: true`).
 | Tool | Purpose |
 |---|---|
 | `get_marketplace_listing` | Fetch a listing by id |
-| `get_price_suggestions` | Discogs price suggestions by condition |
+| `get_price_suggestions` | Discogs price suggestions by condition (requires seller account) |
 | `get_release_stats` | Number for sale + lowest asking price |
 
 ### Health
@@ -62,21 +87,7 @@ All tools are read-only (`readOnlyHint: true`).
 - **Read-only upstream.** No write tools ship in this release — the server cannot modify your collection, wantlist, or marketplace listings.
 - **Rate limits.** Authenticated Discogs requests are capped at 60/min per token (Discogs-side); the server surfaces HTTP 429s with a clear message when hit.
 
-See [PRIVACY.md](PRIVACY.md) for the full privacy policy, including GDPR legal basis, retention / deletion, and your rights.
-
-## Self-host
-
-If you'd rather run your own Worker instead of using the hosted instance above:
-
-1. Clone this repo
-2. Register a Discogs application at <https://www.discogs.com/settings/developers> — note the Consumer Key and Consumer Secret, and set the Callback URL to `https://<your-worker-url>/callback/discogs`
-3. Create a Cloudflare KV namespace: `npx wrangler kv namespace create OAUTH_KV` and paste the id into `wrangler.jsonc`
-4. Set secrets:
-   ```
-   npx wrangler secret put DISCOGS_CONSUMER_KEY
-   npx wrangler secret put DISCOGS_CONSUMER_SECRET
-   ```
-5. Deploy: `npx wrangler deploy`
+See [PRIVACY.md](PRIVACY.md) for the full privacy policy, including GDPR legal basis, retention / deletion, and your rights. Note that when you self-host, *you* become the operator responsible for your users' data; treat PRIVACY.md as a template to adapt, not as legal advice.
 
 ## Development
 
@@ -86,6 +97,14 @@ npm run dev         # local wrangler dev at http://localhost:8787/mcp
 npm run type-check  # tsc --noEmit
 npm test            # vitest — validates the OAuth 1.0a signer against a reference implementation
 ```
+
+## Architecture notes
+
+- `src/index.ts` — OAuth 2.0 provider shell + Worker entrypoint. Serves `/mcp`, `/authorize`, `/token`, `/register`, `/.well-known/oauth-authorization-server`, `/favicon.{ico,png,svg}`, and a minimal landing page at `/`.
+- `src/mcp.ts` — `DiscogsMCP` agent class (extends `McpAgent`), tool registrations, Discogs response interpretation.
+- `src/discogs-oauth.ts` — OAuth 1.0a client: HMAC-SHA1 signer via Web Crypto, RFC 3986 percent-encoding, request-token / access-token / identity callers, plus a `signedFetch` helper used by the tool handlers.
+- `src/discogs-handler.ts` — Hono app serving `/authorize` and `/callback/discogs` (the upstream OAuth 1.0a dance).
+- `tests/discogs-oauth.test.ts` — vitest suite cross-checking the signer against `oauth-1.0a` (reference impl) across six cases including unicode and percent-encoding edges.
 
 ## License
 
