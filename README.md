@@ -4,6 +4,8 @@ Open-source Model Context Protocol (MCP) server that lets Claude search the [Dis
 
 Runs on Cloudflare Workers. Claude connects over streamable HTTP. Per-user auth is handled end-to-end: Claude does OAuth 2.0 with the Worker (CIMD / DCR); the Worker does OAuth 1.0a with Discogs. No tokens are shared between users.
 
+**Project page:** <https://mcal8055.github.io/discogs_mcp/> — architecture walkthrough, tool catalog, and example transcripts.
+
 **This repo is self-host only — there is no public hosted instance.** Clone and deploy your own.
 
 ## Deploy your own (≈10 min)
