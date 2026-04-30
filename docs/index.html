@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>discogs-mcp — Claude meets your record collection</title>
+	<meta name="description" content="An open-source Model Context Protocol server that lets Claude search Discogs and read your collection, wantlist, and marketplace data. Self-host on Cloudflare Workers." />
+	<meta property="og:title" content="discogs-mcp" />
+	<meta property="og:description" content="Claude meets your record collection. An open-source MCP server for Discogs, deployable to Cloudflare Workers in about ten minutes." />
+	<meta property="og:type" content="website" />
+	<meta name="theme-color" content="#0f0f10" />
+	<link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+	<link rel="icon" type="image/png" href="assets/logo-64.png" />
+	<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+	<nav class="top">
+		<div class="container">
+			<a class="brand" href="#">
+				<img src="assets/logo.svg" alt="" />
+				<span>discogs-mcp</span>
+			</a>
+			<div class="links">
+				<a href="#architecture">Architecture</a>
+				<a href="#tools">Tools</a>
+				<a href="#transcripts">Examples</a>
+				<a href="#deploy">Deploy</a>
+				<a href="https://github.com/mcal8055/discogs_mcp">GitHub</a>
+			</div>
+		</div>
+	</nav>
+
+	<header class="hero">
+		<div class="container hero-grid">
+			<div>
+				<h1>Claude meets your record collection.</h1>
+				<p class="lede">
+					An open-source <a href="https://modelcontextprotocol.io">Model Context Protocol</a> server that lets Claude search the <a href="https://www.discogs.com/developers">Discogs</a> music database and read the authenticated user's collection, wantlist, and marketplace data — all read-only, all per-user OAuth.
+				</p>
+				<div class="ctas">
+					<a class="btn primary" href="https://github.com/mcal8055/discogs_mcp">View on GitHub</a>
+					<a class="btn" href="#deploy">Self-host in ~10 min</a>
+				</div>
+				<div class="badges">
+					<span class="badge">Cloudflare Workers</span>
+					<span class="badge">TypeScript</span>
+					<span class="badge">OAuth 1.0a + 2.0</span>
+					<span class="badge">16 tools</span>
+					<span class="badge">MIT</span>
+				</div>
+			</div>
+			<div class="hero-art">
+				<img src="assets/logo.svg" alt="discogs-mcp logo" />
+			</div>
+		</div>
+	</header>
+
+	<section id="what-it-is">
+		<div class="container">
+			<h2><span class="num">01</span>What it is</h2>
+			<p class="subtitle">A remote MCP server you deploy to your own Cloudflare account. Claude connects to it over streamable HTTP and gains sixteen tools for browsing Discogs — both the public catalog and your private collection.</p>
+			<p>Two OAuth dances run end-to-end. Claude does OAuth&nbsp;2.0 with the Worker (Dynamic Client Registration plus the Claude-issued metadata flow), and the Worker does OAuth&nbsp;1.0a with Discogs on each connected user's behalf. Tokens live in Cloudflare KV, scoped to the OAuth grant; deleting the connector in Claude drops the entry. No tokens are shared between users, and no conversation content is stored server-side.</p>
+		</div>
+	</section>
+
+	<section id="architecture">
+		<div class="container">
+			<h2><span class="num">02</span>Architecture</h2>
+			<p class="subtitle">Two providers, one Worker. Claude talks OAuth&nbsp;2.0 to the Worker; the Worker talks OAuth&nbsp;1.0a to Discogs. The signer is implemented from scratch on Web Crypto and cross-checked against a reference implementation in the test suite.</p>
+
+			<div class="arch">
+<pre class="arch-diagram">
+   <span class="lbl">Claude (client)</span>                <span class="lbl">Cloudflare Worker</span>                  <span class="lbl">Discogs</span>
+   ───────────────                ─────────────────                  ───────
+                                  ┌─────────────────────────┐
+       streamable HTTP            │  /mcp        /authorize │
+   ───────────────────────────►   │  /token      /register  │
+       <span class="muted">OAuth 2.0 (DCR + CIMD)</span>     │  /.well-known/...       │
+   ◄───────────────────────────   └────────────┬────────────┘
+                                               │
+                                               │  OAuth 1.0a
+                                               │  HMAC-SHA1 signer
+                                               ▼  signedFetch
+                                  ┌─────────────────────────┐
+                                  │  api.discogs.com        │   ◄─── per-user
+                                  │  /oauth/request_token   │        access token
+                                  │  /oauth/access_token    │
+                                  │  /oauth/identity        │
+                                  └─────────────────────────┘
+                                               ▲
+                                               │
+                                  ┌────────────┴────────────┐
+                                  │  Cloudflare KV          │
+                                  │  (per-grant tokens)     │
+                                  └─────────────────────────┘
+</pre>
+			</div>
+
+			<div class="arch-notes">
+				<div class="arch-note">
+					<h4>Per-user isolation</h4>
+					<p>Every connected user completes the Discogs flow individually. Their access token is bound to their OAuth grant; one user can never see another's data.</p>
+				</div>
+				<div class="arch-note">
+					<h4>Read-only by design</h4>
+					<p>No write tools ship in this release. The server cannot modify your collection, wantlist, or marketplace listings — every tool is annotated <code>readOnlyHint: true</code>.</p>
+				</div>
+				<div class="arch-note">
+					<h4>From-scratch signer</h4>
+					<p>OAuth 1.0a HMAC-SHA1 on Web Crypto, with RFC 3986 percent-encoding. A vitest suite cross-checks it against the <code>oauth-1.0a</code> reference implementation across six cases including unicode edges.</p>
+				</div>
+				<div class="arch-note">
+					<h4>Hardened bootstrap</h4>
+					<p>Sanitized OAuth error responses, Zod validation on KV stash and identity payloads, escaped origin in the landing page, KV stash deleted before token exchange, fifteen-second fetch timeouts.</p>
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<section id="tools">
+		<div class="container">
+			<h2><span class="num">03</span>Tool catalog</h2>
+			<p class="subtitle">Sixteen tools across four groups. All read-only.</p>
+
+			<div class="tool-group">
+				<h3>Core lookup</h3>
+				<div class="tool-grid">
+					<div class="tool">
+						<div class="tool-name">search</div>
+						<div class="tool-desc">Search the Discogs database by query or filters (type, artist, title, year, catno, barcode, format).</div>
+					</div>
+					<div class="tool">
+						<div class="tool-name">get_release</div>
+						<div class="tool-desc">Full metadata for a specific pressing.</div>
+					</div>
+					<div class="tool">
+						<div class="tool-name">get_master</div>
+						<div class="tool-desc">The canonical master release across all pressings.</div>
+					</div>
+					<div class="tool">
+						<div class="tool-name">get_master_versions</div>
+						<div class="tool-desc">Every pressing of a master, with format and country.</div>
+					</div>
+					<div class="tool">
+						<div class="tool-name">get_artist</div>
+						<div class="tool-desc">Artist profile, aliases, and members.</div>
+					</div>
+					<div class="tool">
+						<div class="tool-name">get_artist_releases</div>
+						<div class="tool-desc">Releases credited to an artist, paginated.</div>
+					</div>
+					<div class="tool">
+						<div class="tool-name">get_label</div>
+						<div class="tool-desc">Label profile, parent label, and sublabels.</div>
+					</div>
+					<div class="tool">
+						<div class="tool-name">get_label_releases</div>
+						<div class="tool-desc">Releases published by a label.</div>
+					</div>
+				</div>
+			</div>
+
+			<div class="tool-group">
+				<h3>Personal data (authenticated user)</h3>
+				<div class="tool-grid">
+					<div class="tool">
+						<div class="tool-name">get_identity</div>
+						<div class="tool-desc">Your Discogs username and id.</div>
+					</div>
+					<div class="tool">
+						<div class="tool-name">get_collection_folders</div>
+						<div class="tool-desc">List your collection folders.</div>
+					</div>
+					<div class="tool">
+						<div class="tool-name">get_collection</div>
+						<div class="tool-desc">Releases in a folder (folder 0 returns everything).</div>
+					</div>
+					<div class="tool">
+						<div class="tool-name">get_wantlist</div>
+						<div class="tool-desc">Your wantlist.</div>
+					</div>
+				</div>
+			</div>
+
+			<div class="tool-group">
+				<h3>Marketplace</h3>
+				<div class="tool-grid">
+					<div class="tool">
+						<div class="tool-name">get_marketplace_listing</div>
+						<div class="tool-desc">Fetch a marketplace listing by id.</div>
+					</div>
+					<div class="tool">
+						<div class="tool-name">get_price_suggestions</div>
+						<div class="tool-desc">Discogs price suggestions by condition (requires seller account).</div>
+					</div>
+					<div class="tool">
+						<div class="tool-name">get_release_stats</div>
+						<div class="tool-desc">Number for sale and lowest asking price.</div>
+					</div>
+				</div>
+			</div>
+
+			<div class="tool-group">
+				<h3>Health</h3>
+				<div class="tool-grid">
+					<div class="tool">
+						<div class="tool-name">ping</div>
+						<div class="tool-desc">Confirm the connection and report the authenticated username.</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<section id="transcripts">
+		<div class="container">
+			<h2><span class="num">04</span>What it feels like</h2>
+			<p class="subtitle">Three sample interactions. The tool calls are the actual ones the model runs; responses are paraphrased for length.</p>
+
+			<div class="transcript">
+				<div class="turn">
+					<div class="speaker you">You</div>
+					<p>Find the original UK pressing of <em>OK Computer</em> and tell me what's on side D.</p>
+				</div>
+				<div class="turn">
+					<div class="speaker">Claude</div>
+					<p>I'll search for it, then pull the full pressing.</p>
+					<div class="tool-call"><span class="fn">search</span> {q: "OK Computer", artist: "Radiohead", country: "UK", format: "Vinyl"}</div>
+					<div class="tool-call"><span class="fn">get_release</span> {release_id: 1851062}</div>
+					<p>That's the 1997 Parlophone double-LP, catalog <code>NODATA 02</code>. Side&nbsp;D is "Lucky", "The Tourist", and the locked-groove run-out. The matrix etching reads <em>"NODATA02 D1 ▲ TOWNHOUSE"</em>.</p>
+				</div>
+			</div>
+
+			<div class="transcript">
+				<div class="turn">
+					<div class="speaker you">You</div>
+					<p>What's the average release year of records in my collection's All folder, and which decade is over-represented?</p>
+				</div>
+				<div class="turn">
+					<div class="speaker">Claude</div>
+					<div class="tool-call"><span class="fn">get_collection_folders</span> {}</div>
+					<div class="tool-call"><span class="fn">get_collection</span> {folder_id: 0, per_page: 100}</div>
+					<p>Across 312 releases the mean year is 1994, median 1997. The 1990s account for 41% of the collection — heavily over-represented vs. a flat distribution. Your earliest is a 1962 Blue Note pressing; the most recent is from 2024.</p>
+				</div>
+			</div>
+
+			<div class="transcript">
+				<div class="turn">
+					<div class="speaker you">You</div>
+					<p>I have a near-mint copy of <em>Kid A</em> on vinyl. Worth listing this week?</p>
+				</div>
+				<div class="turn">
+					<div class="speaker">Claude</div>
+					<div class="tool-call"><span class="fn">get_release_stats</span> {release_id: 386058}</div>
+					<div class="tool-call"><span class="fn">get_price_suggestions</span> {release_id: 386058}</div>
+					<p>There are 47 copies for sale and the lowest asking price is $58. The Discogs suggestion for Near Mint is $74.12 (median over recent sold listings). With supply that thick, expect to clear closer to the floor than the suggestion — listing at $65 would put you in the top quartile of bids without undercutting.</p>
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<section id="deploy">
+		<div class="container">
+			<h2><span class="num">05</span>Deploy your own</h2>
+			<p class="subtitle">There is no public hosted instance — clone and deploy your own Worker. Free Cloudflare account, free Discogs developer app, Node 20+. The README has the exact callback-URL dance; the abbreviated version:</p>
+
+			<div class="steps">
+				<ol>
+					<li>
+						<strong>Clone and install.</strong>
+<pre><code>git clone https://github.com/mcal8055/discogs_mcp.git
+cd discogs_mcp
+npm install</code></pre>
+					</li>
+					<li>
+						<strong>Register a Discogs application</strong> at <a href="https://www.discogs.com/settings/developers">discogs.com/settings/developers</a>. Save the Consumer Key and Consumer Secret. Set the Callback URL to <code>https://&lt;your-worker&gt;.workers.dev/callback/discogs</code>.
+					</li>
+					<li>
+						<strong>Create a KV namespace</strong> for OAuth state and paste the returned <code>id</code> into <code>wrangler.jsonc</code>.
+<pre><code>npx wrangler kv namespace create OAUTH_KV</code></pre>
+					</li>
+					<li>
+						<strong>Set your Discogs secrets</strong> (encrypted at rest by Cloudflare):
+<pre><code>npx wrangler secret put DISCOGS_CONSUMER_KEY
+npx wrangler secret put DISCOGS_CONSUMER_SECRET</code></pre>
+					</li>
+					<li>
+						<strong>Deploy.</strong> Wrangler prints your live URL.
+<pre><code>npx wrangler deploy</code></pre>
+					</li>
+					<li>
+						<strong>Connect in Claude.</strong> Settings → Connectors → Add custom connector → paste <code>&lt;your-worker-url&gt;/mcp</code>. Claude walks you through the Discogs login.
+					</li>
+				</ol>
+			</div>
+		</div>
+	</section>
+
+	<section id="privacy">
+		<div class="container">
+			<h2><span class="num">06</span>Privacy posture</h2>
+			<p class="subtitle">Self-hosted by design. When you deploy, <em>you</em> are the operator responsible for your users' data — treat the privacy policy as a template to adapt.</p>
+			<ul>
+				<li><strong>Per-user OAuth.</strong> Each connector completes the Discogs flow individually; tokens are scoped to the OAuth grant.</li>
+				<li><strong>Tokens at rest.</strong> Stored in Cloudflare KV, readable only by the Worker runtime. Deleting the connector revokes the grant.</li>
+				<li><strong>No conversation storage.</strong> The server doesn't read, persist, or transmit Claude conversation content beyond the explicit tool inputs.</li>
+				<li><strong>Read-only upstream.</strong> No write tools. The server cannot modify any of your Discogs data.</li>
+				<li><strong>Rate limits surfaced.</strong> Discogs caps authenticated requests at 60/min per token; HTTP 429s return a clear message rather than failing silently.</li>
+			</ul>
+			<p>Full policy in <a href="https://github.com/mcal8055/discogs_mcp/blob/main/PRIVACY.md">PRIVACY.md</a>.</p>
+		</div>
+	</section>
+
+	<footer>
+		<div class="container">
+			MIT-licensed. Built by <a href="https://github.com/mcal8055">@mcal8055</a>. Source on <a href="https://github.com/mcal8055/discogs_mcp">GitHub</a>.
+		</div>
+	</footer>
+</body>
+</html>
